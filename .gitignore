@@ -1,0 +1,24 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+web/node_modules/
+
+# 索引数据（用户私有）
+data/chroma/
+data/lancedb/
+data/index.json
+data/indexes/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
