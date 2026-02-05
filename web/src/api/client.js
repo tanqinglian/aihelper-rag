@@ -91,6 +91,9 @@ export const monitoringApi = {
 
   // 系统统计
   stats: () => request('/monitoring/stats'),
+
+  // LanceDB 向量数据库统计
+  lancedb: () => request('/monitoring/lancedb'),
 };
 
 export default {

@@ -301,6 +301,96 @@ def get_stats():
     }
 
 
+@app.get("/monitoring/lancedb")
+def get_lancedb_stats():
+    """获取 LanceDB 向量数据库统计信息"""
+    import lancedb
+    from config import LANCEDB_DIR
+
+    if not os.path.exists(LANCEDB_DIR):
+        return {"tables": [], "total_size_bytes": 0}
+
+    db = lancedb.connect(LANCEDB_DIR)
+    tables_info = []
+
+    total_size = 0
+    for name in db.table_names():
+        table = db.open_table(name)
+        count = table.count_rows()
+        schema = table.schema
+
+        # 磁盘大小
+        table_dir = os.path.join(LANCEDB_DIR, f'{name}.lance')
+        table_size = 0
+        if os.path.exists(table_dir):
+            for root, dirs, files in os.walk(table_dir):
+                for f in files:
+                    table_size += os.path.getsize(os.path.join(root, f))
+        total_size += table_size
+
+        # 向量维度
+        vector_dim = 0
+        for field in schema:
+            if field.name == 'vector':
+                vector_dim = field.type.list_size
+                break
+
+        # 用 arrow 分析详细统计
+        arrow_table = table.to_arrow()
+
+        # 唯一文件数
+        paths = arrow_table.column('path').to_pylist()
+        unique_files = len(set(paths))
+
+        # 内容长度
+        contents = arrow_table.column('content').to_pylist()
+        content_lens = [len(c) for c in contents]
+        total_text_size = sum(content_lens)
+
+        # chunk_type 分布
+        chunk_types = {}
+        if 'chunk_type' in [f.name for f in schema]:
+            for ct in arrow_table.column('chunk_type').to_pylist():
+                chunk_types[ct] = chunk_types.get(ct, 0) + 1
+
+        # 模块分布
+        modules = {}
+        if 'module' in [f.name for f in schema]:
+            for m in arrow_table.column('module').to_pylist():
+                modules[m] = modules.get(m, 0) + 1
+
+        # 元数据统计
+        metadata_stats = {}
+        for col in ['functions', 'exports', 'imports']:
+            if col in [f.name for f in schema]:
+                vals = arrow_table.column(col).to_pylist()
+                non_empty = sum(1 for v in vals if v)
+                metadata_stats[col] = {"total": count, "non_empty": non_empty}
+
+        tables_info.append({
+            "name": name,
+            "chunk_count": count,
+            "unique_files": unique_files,
+            "avg_chunks_per_file": round(count / unique_files, 1) if unique_files > 0 else 0,
+            "size_bytes": table_size,
+            "vector_dim": vector_dim,
+            "total_text_bytes": total_text_size,
+            "content_stats": {
+                "min_chars": min(content_lens) if content_lens else 0,
+                "max_chars": max(content_lens) if content_lens else 0,
+                "avg_chars": round(sum(content_lens) / len(content_lens)) if content_lens else 0,
+            },
+            "chunk_types": chunk_types,
+            "modules_top10": dict(sorted(modules.items(), key=lambda x: -x[1])[:10]),
+            "metadata_stats": metadata_stats,
+        })
+
+    return {
+        "tables": tables_info,
+        "total_size_bytes": total_size,
+    }
+
+
 # ============ 路径验证 ============
 
 @app.get("/validate-path")

@@ -1,3 +1,47 @@
 {
-  "projects": []
+  "projects": [
+    {
+      "id": "a7bca53d",
+      "name": "goods",
+      "source_dir": "/Users/gaotu/project-tu/gaotu-fe-goodsmanage",
+      "config": {
+        "extensions": [
+          ".js",
+          ".jsx",
+          ".ts",
+          ".tsx",
+          ".less",
+          ".css",
+          ".vue"
+        ],
+        "ignore_dirs": [
+          "node_modules",
+          ".umi",
+          ".git",
+          "dist",
+          "__pycache__"
+        ],
+        "max_file_chars": 6000,
+        "preprocessor": {
+          "remove_comments": true,
+          "remove_debug_statements": true,
+          "remove_eslint_comments": true,
+          "normalize_whitespace": true,
+          "chunk_strategy": "semantic",
+          "chunk_max_chars": 1500,
+          "chunk_min_chars": 200,
+          "chunk_overlap_lines": 3,
+          "max_chunk_chars": 2000,
+          "extract_metadata": true
+        }
+      },
+      "status": "indexed",
+      "file_count": 3143,
+      "index_size_bytes": 0,
+      "last_indexed_at": "2026-02-05 13:56:59.875682",
+      "created_at": "2026-02-05 13:47:10.431003",
+      "error_message": null,
+      "indexed_at": "2026-02-05T13:56:59"
+    }
+  ]
 }
