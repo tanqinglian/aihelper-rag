@@ -80,6 +80,22 @@ export const chatApi = {
 };
 
 /**
+ * Agent 多轮推理 API
+ */
+export const agentApi = {
+  // Agent 问答（SSE 流式返回推理过程）
+  askAgent: (projectIds, question, maxRounds = 5) =>
+    fetch(`${BASE_URL}/ask/agent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_ids: projectIds, question, max_rounds: maxRounds }),
+    }),
+
+  // 获取已索引项目列表
+  getIndexedProjects: () => request('/projects/indexed'),
+};
+
+/**
  * 监控相关 API
  */
 export const monitoringApi = {
@@ -100,5 +116,6 @@ export default {
   project: projectApi,
   index: indexApi,
   chat: chatApi,
+  agent: agentApi,
   monitoring: monitoringApi,
 };

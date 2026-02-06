@@ -1,6 +1,6 @@
 """数据模型定义"""
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime
 from enum import Enum
 import uuid
@@ -103,3 +103,29 @@ class IndexProgressEvent(BaseModel):
     """索引进度事件"""
     type: str  # scan_start, scan_complete, indexing, file_error, saving, complete, error
     data: dict
+
+
+# ============ Agent 相关模型 ============
+
+class AgentStep(BaseModel):
+    """Agent 推理步骤"""
+    step_type: str  # "thinking" | "tool_call" | "tool_result" | "final_answer"
+    content: str
+    round: int = 0
+    metadata: Optional[dict[str, Any]] = None
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class AgentAskRequest(BaseModel):
+    """Agent 问答请求"""
+    question: str
+    project_ids: list[str]  # 支持多项目
+    max_rounds: int = 5
+
+
+class AgentAskResponse(BaseModel):
+    """Agent 问答响应"""
+    answer: str
+    steps: list[dict] = []
+    sources: list[dict] = []
+    total_rounds: int = 0

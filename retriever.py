@@ -71,6 +71,98 @@ def retrieve_by_project(query: str, project_id: str, top_k: int = TOP_K) -> list
     return items
 
 
+def retrieve_multi_project(
+    query: str,
+    project_ids: list[str],
+    top_k: int = TOP_K
+) -> dict[str, list[dict]]:
+    """
+    跨多项目检索
+
+    Args:
+        query: 查询文本
+        project_ids: 项目 ID 列表
+        top_k: 每个项目返回的结果数
+
+    Returns:
+        {project_id: [results]} 格式的字典
+    """
+    results = {}
+
+    for project_id in project_ids:
+        try:
+            docs = retrieve_by_project(query, project_id, top_k)
+            results[project_id] = docs
+        except Exception:
+            results[project_id] = []
+
+    return results
+
+
+def retrieve_by_path(
+    project_id: str,
+    file_path: str,
+    top_k: int = 10
+) -> list[dict]:
+    """
+    按文件路径检索（精确匹配）
+
+    Args:
+        project_id: 项目 ID
+        file_path: 文件路径（支持部分匹配）
+        top_k: 返回结果数
+
+    Returns:
+        匹配的文档列表
+    """
+    try:
+        db = get_lancedb()
+        table_name = get_table_name(project_id)
+        table = db.open_table(table_name)
+    except Exception:
+        return []
+
+    # 使用 SQL-like 过滤
+    try:
+        results = table.search().where(f"path LIKE '%{file_path}%'").limit(top_k).to_list()
+    except Exception:
+        return []
+
+    items = []
+    for r in results:
+        items.append({
+            "path": r.get("path", ""),
+            "module": r.get("module", ""),
+            "content": r.get("content", ""),
+            "score": 1.0,
+            "chunk_id": r.get("chunk_id", ""),
+            "chunk_type": r.get("chunk_type", ""),
+            "functions": r.get("functions", ""),
+            "classes": r.get("classes", ""),
+            "exports": r.get("exports", ""),
+            "imports": r.get("imports", ""),
+            "start_line": r.get("start_line", 0),
+            "end_line": r.get("end_line", 0),
+        })
+
+    return items
+
+
+def get_all_project_ids() -> list[str]:
+    """获取所有已索引的项目 ID"""
+    try:
+        db = get_lancedb()
+        tables = db.table_names()
+        # 从表名中提取项目 ID (格式: project_{id})
+        project_ids = []
+        for t in tables:
+            if t.startswith("project_"):
+                project_ids.append(t[8:])  # 移除 "project_" 前缀
+        return project_ids
+    except Exception:
+        return []
+
+
 # 兼容旧版调用
 def retrieve(query: str, top_k: int = TOP_K) -> list[dict]:
     """检索（兼容旧版CLI，使用默认表）"""

@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Layout, Button, Select, Typography, Tag, Input, Tooltip, Divider, Space, Empty } from 'antd';
+import { Layout, Button, Select, Typography, Tag, Input, Tooltip, Divider, Space, Empty, Switch } from 'antd';
 import {
   PlusOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MessageOutlined,
   DeleteOutlined, SendOutlined, StopOutlined, SettingOutlined, DashboardOutlined,
-  CodeOutlined, FileTextOutlined, CopyOutlined, CheckOutlined,
+  CodeOutlined, FileTextOutlined, CopyOutlined, CheckOutlined, RobotOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,6 +13,8 @@ import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { ChatProvider, useChatContext } from '../contexts/ChatContext';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { useStreamingChat } from '../hooks/useStreamingChat';
+import { useAgentChat } from '../hooks/useAgentChat';
+import AgentStepsPanel from '../components/AgentStepsPanel';
 
 const { Sider, Content } = Layout;
 const { Text, Title } = Typography;
@@ -28,6 +30,9 @@ export default function ChatPage() {
 
 function ChatPageInner() {
   const [collapsed, setCollapsed] = useState(false);
+  const [agentMode, setAgentMode] = useState(false);
+  const [selectedAgentProjects, setSelectedAgentProjects] = useState([]);
+
   return (
     <Layout style={{ height: '100vh', background: '#f6ffed' }}>
       <Sider
@@ -38,7 +43,13 @@ function ChatPageInner() {
         className="chat-sider"
         style={{ background: '#fff', borderRight: '1px solid #d9f7be', boxShadow: '2px 0 8px rgba(82, 196, 26, 0.06)' }}
       >
-        <SidebarContent onCollapse={() => setCollapsed(true)} />
+        <SidebarContent
+          onCollapse={() => setCollapsed(true)}
+          agentMode={agentMode}
+          setAgentMode={setAgentMode}
+          selectedAgentProjects={selectedAgentProjects}
+          setSelectedAgentProjects={setSelectedAgentProjects}
+        />
       </Sider>
       <Content style={{ display: 'flex', flexDirection: 'column', position: 'relative', background: '#f6ffed' }}>
         {collapsed && (
@@ -49,14 +60,17 @@ function ChatPageInner() {
             style={{ position: 'absolute', top: 16, left: 16, zIndex: 10, color: '#52c41a' }}
           />
         )}
-        <ChatMainArea />
+        <ChatMainArea
+          agentMode={agentMode}
+          selectedAgentProjects={selectedAgentProjects}
+        />
       </Content>
     </Layout>
   );
 }
 
 /* ===================== 侧边栏 ===================== */
-function SidebarContent({ onCollapse }) {
+function SidebarContent({ onCollapse, agentMode, setAgentMode, selectedAgentProjects, setSelectedAgentProjects }) {
   const navigate = useNavigate();
   const { projects, selectedProjectId, setSelectedProjectId } = useProjectContext();
   const { conversations, currentConversationId, setCurrentConversationId, createConversation, deleteConversation } = useChatContext();
@@ -74,20 +88,66 @@ function SidebarContent({ onCollapse }) {
         </Tooltip>
       </div>
 
+      {/* Agent 模式切换 */}
+      <div style={{
+        marginBottom: 16,
+        padding: '10px 12px',
+        background: agentMode ? '#f6ffed' : '#fafafa',
+        borderRadius: 8,
+        border: agentMode ? '1px solid #b7eb8f' : '1px solid #f0f0f0',
+        transition: 'all 0.3s'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <RobotOutlined style={{ color: agentMode ? '#52c41a' : '#999' }} />
+            <Text style={{ fontSize: 13, color: agentMode ? '#135200' : '#666' }}>Agent 多轮推理</Text>
+          </div>
+          <Switch
+            size="small"
+            checked={agentMode}
+            onChange={setAgentMode}
+            style={{ background: agentMode ? '#52c41a' : undefined }}
+          />
+        </div>
+        {agentMode && (
+          <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
+            支持跨项目检索和 API 链路追踪
+          </Text>
+        )}
+      </div>
+
       {/* 项目选择器 */}
       <div style={{ marginBottom: 16 }}>
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>当前项目</Text>
-        <Select
-          value={selectedProjectId}
-          onChange={setSelectedProjectId}
-          style={{ width: '100%' }}
-          placeholder="选择已索引的项目"
-          options={indexedProjects.map(p => ({
-            value: p.id,
-            label: `${p.name} (${p.file_count} 文件)`,
-          }))}
-          notFoundContent="暂无已索引项目"
-        />
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+          {agentMode ? '选择项目（可多选）' : '当前项目'}
+        </Text>
+        {agentMode ? (
+          <Select
+            mode="multiple"
+            value={selectedAgentProjects}
+            onChange={setSelectedAgentProjects}
+            style={{ width: '100%' }}
+            placeholder="选择要分析的项目"
+            maxTagCount={2}
+            options={indexedProjects.map(p => ({
+              value: p.id,
+              label: `${p.name} (${p.file_count} 文件)`,
+            }))}
+            notFoundContent="暂无已索引项目"
+          />
+        ) : (
+          <Select
+            value={selectedProjectId}
+            onChange={setSelectedProjectId}
+            style={{ width: '100%' }}
+            placeholder="选择已索引的项目"
+            options={indexedProjects.map(p => ({
+              value: p.id,
+              label: `${p.name} (${p.file_count} 文件)`,
+            }))}
+            notFoundContent="暂无已索引项目"
+          />
+        )}
       </div>
 
       <Divider style={{ margin: '0 0 12px', borderColor: '#d9f7be' }} />
@@ -165,21 +225,40 @@ function SidebarContent({ onCollapse }) {
 }
 
 /* ===================== 聊天主区域 ===================== */
-function ChatMainArea() {
+function ChatMainArea({ agentMode, selectedAgentProjects }) {
   const { selectedProjectId, selectedProject } = useProjectContext();
   const { currentConversation, currentConversationId, createConversation, addMessage, updateConversationTitle } = useChatContext();
   const { isStreaming, streamingContent, streamingSources, error, sendMessage, cancelStream } = useStreamingChat();
+  const {
+    isRunning: agentRunning,
+    steps: agentSteps,
+    currentStep: agentCurrentStep,
+    finalAnswer: agentFinalAnswer,
+    sources: agentSources,
+    error: agentError,
+    runAgent,
+    cancelAgent,
+    reset: resetAgent,
+  } = useAgentChat();
+
   const [input, setInput] = useState('');
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
   const messages = currentConversation?.messages || [];
-  const hasMessages = messages.length > 0 || isStreaming;
-  const canSend = !!selectedProjectId && selectedProject?.status === 'indexed';
+  const hasMessages = messages.length > 0 || isStreaming || agentRunning;
+
+  // 根据模式确定是否可发送
+  const canSend = agentMode
+    ? selectedAgentProjects.length > 0
+    : (!!selectedProjectId && selectedProject?.status === 'indexed');
+
+  const isLoading = agentMode ? agentRunning : isStreaming;
+  const currentError = agentMode ? agentError : error;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, agentSteps, agentFinalAnswer]);
 
   const handleSend = async (question) => {
     const q = question || input.trim();
@@ -192,13 +271,34 @@ function ChatMainArea() {
       convId = c?.id;
     }
 
-    // 显式传递 conversationId，避免状态异步更新问题
     addMessage({ role: 'user', content: q }, convId);
     if (messages.length === 0) updateConversationTitle(q, convId);
 
-    await sendMessage(selectedProjectId, q, (result) => {
-      addMessage({ role: 'assistant', content: result.content, sources: result.sources }, convId);
-    });
+    if (agentMode) {
+      // Agent 模式
+      resetAgent();
+      await runAgent(selectedAgentProjects, q, (result) => {
+        addMessage({
+          role: 'assistant',
+          content: result.answer,
+          sources: result.sources,
+          agentSteps: result.steps,
+        }, convId);
+      });
+    } else {
+      // 普通模式
+      await sendMessage(selectedProjectId, q, (result) => {
+        addMessage({ role: 'assistant', content: result.content, sources: result.sources }, convId);
+      });
+    }
+  };
+
+  const handleCancel = () => {
+    if (agentMode) {
+      cancelAgent();
+    } else {
+      cancelStream();
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -206,6 +306,14 @@ function ChatMainArea() {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // 获取当前项目名称（用于欢迎页）
+  const getCurrentProjectName = () => {
+    if (agentMode) {
+      return selectedAgentProjects.length > 0 ? `${selectedAgentProjects.length} 个项目` : null;
+    }
+    return selectedProject?.name;
   };
 
   return (
@@ -217,7 +325,29 @@ function ChatMainArea() {
             {messages.map((msg, idx) => (
               <MessageBubble key={idx} message={msg} />
             ))}
-            {isStreaming && (
+
+            {/* Agent 模式：显示推理过程 */}
+            {agentMode && (agentRunning || agentSteps.length > 0) && (
+              <div style={{ maxWidth: 768, margin: '0 auto', padding: '16px 24px' }}>
+                <AgentStepsPanel
+                  steps={agentSteps}
+                  isRunning={agentRunning}
+                  currentStep={agentCurrentStep}
+                />
+              </div>
+            )}
+
+            {/* Agent 模式：最终答案 */}
+            {agentMode && agentFinalAnswer && !agentRunning && (
+              <MessageBubble message={{
+                role: 'assistant',
+                content: agentFinalAnswer,
+                sources: agentSources,
+              }} />
+            )}
+
+            {/* 普通模式：流式响应 */}
+            {!agentMode && isStreaming && (
               <MessageBubble message={{
                 role: 'assistant',
                 content: streamingContent || '思考中...',
@@ -226,19 +356,23 @@ function ChatMainArea() {
             )}
           </>
         ) : (
-          <EmptyWelcome projectName={selectedProject?.name} onExample={handleSend} />
+          <EmptyWelcome
+            projectName={getCurrentProjectName()}
+            onExample={handleSend}
+            agentMode={agentMode}
+          />
         )}
         <div ref={bottomRef} />
       </div>
 
       {/* 错误提示 */}
-      {error && (
+      {currentError && (
         <div style={{
           position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
           background: '#fff2f0', border: '1px solid #ffccc7', color: '#ff4d4f',
           padding: '8px 16px', borderRadius: 8, fontSize: 13, maxWidth: 480,
         }}>
-          {error}
+          {currentError}
         </div>
       )}
 
@@ -251,30 +385,42 @@ function ChatMainArea() {
         <div style={{ maxWidth: 768, margin: '0 auto' }}>
           <div style={{
             display: 'flex', alignItems: 'flex-end', gap: 8,
-            background: '#fff', border: '1px solid #b7eb8f',
+            background: '#fff', border: agentMode ? '1px solid #52c41a' : '1px solid #b7eb8f',
             borderRadius: 12, padding: '8px 12px',
-            boxShadow: '0 2px 8px rgba(82, 196, 26, 0.1)',
+            boxShadow: agentMode ? '0 2px 8px rgba(82, 196, 26, 0.2)' : '0 2px 8px rgba(82, 196, 26, 0.1)',
           }}>
+            {agentMode && (
+              <Tooltip title="Agent 多轮推理模式">
+                <RobotOutlined style={{ color: '#52c41a', fontSize: 18, marginRight: 4 }} />
+              </Tooltip>
+            )}
             <TextArea
               ref={textareaRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={canSend ? '输入你的问题... (Enter 发送, Shift+Enter 换行)' : '请先选择一个已索引的项目'}
+              placeholder={
+                canSend
+                  ? (agentMode ? '输入问题，Agent 将跨项目分析... (Enter 发送)' : '输入你的问题... (Enter 发送, Shift+Enter 换行)')
+                  : (agentMode ? '请先选择要分析的项目' : '请先选择一个已索引的项目')
+              }
               disabled={!canSend}
               autoSize={{ minRows: 1, maxRows: 6 }}
               variant="borderless"
               style={{ flex: 1, resize: 'none', fontSize: 14, background: 'transparent' }}
             />
-            {isStreaming ? (
-              <Button type="primary" danger icon={<StopOutlined />} onClick={cancelStream} />
+            {isLoading ? (
+              <Button type="primary" danger icon={<StopOutlined />} onClick={handleCancel} />
             ) : (
               <Button type="primary" icon={<SendOutlined />} onClick={() => handleSend()}
                 disabled={!canSend || !input.trim()} />
             )}
           </div>
           <Text type="secondary" style={{ display: 'block', textAlign: 'center', fontSize: 12, marginTop: 8 }}>
-            Code RAG 基于本地代码库生成回答，结果可能不完全准确
+            {agentMode
+              ? 'Agent 模式：支持跨项目分析和 API 调用链追踪'
+              : 'Code RAG 基于本地代码库生成回答，结果可能不完全准确'
+            }
           </Text>
         </div>
       </div>
@@ -393,21 +539,31 @@ function CodeBlock({ language, code }) {
 }
 
 /* ===================== 空状态 ===================== */
-function EmptyWelcome({ projectName, onExample }) {
-  const examples = ['这个项目的主要功能是什么？', '项目中使用了哪些关键技术栈？', '帮我找到处理用户登录的代码', '解释一下项目的目录结构'];
+function EmptyWelcome({ projectName, onExample, agentMode }) {
+  const normalExamples = ['这个项目的主要功能是什么？', '项目中使用了哪些关键技术栈？', '帮我找到处理用户登录的代码', '解释一下项目的目录结构'];
+  const agentExamples = ['订单详情页的完整逻辑是什么？', '用户登录从前端到后端的调用链', '支付功能涉及哪些文件？', '帮我追踪这个 API 的实现'];
+  const examples = agentMode ? agentExamples : normalExamples;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', paddingBottom: 120 }}>
       <div style={{
         width: 64, height: 64, borderRadius: 16,
-        background: 'linear-gradient(135deg, #52c41a, #73d13d)',
+        background: agentMode
+          ? 'linear-gradient(135deg, #52c41a, #13c2c2)'
+          : 'linear-gradient(135deg, #52c41a, #73d13d)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24,
         boxShadow: '0 8px 24px rgba(82, 196, 26, 0.3)',
       }}>
-        <CodeOutlined style={{ fontSize: 32, color: '#fff' }} />
+        {agentMode ? <RobotOutlined style={{ fontSize: 32, color: '#fff' }} /> : <CodeOutlined style={{ fontSize: 32, color: '#fff' }} />}
       </div>
-      <Title level={3} style={{ color: '#135200', marginBottom: 8 }}>Code RAG</Title>
-      <Text type="secondary" style={{ marginBottom: 32 }}>
-        {projectName ? `已选择项目: ${projectName}，开始提问吧` : '请先在左侧选择一个已索引的项目'}
+      <Title level={3} style={{ color: '#135200', marginBottom: 8 }}>
+        {agentMode ? 'Agent 多轮推理' : 'Code RAG'}
+      </Title>
+      <Text type="secondary" style={{ marginBottom: 32, textAlign: 'center', maxWidth: 400 }}>
+        {agentMode
+          ? (projectName ? `已选择 ${projectName}，Agent 将跨项目分析代码逻辑` : '请先在左侧选择要分析的项目（可多选）')
+          : (projectName ? `已选择项目: ${projectName}，开始提问吧` : '请先在左侧选择一个已索引的项目')
+        }
       </Text>
       {projectName && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, maxWidth: 560, width: '100%', padding: '0 16px' }}>
@@ -416,9 +572,13 @@ function EmptyWelcome({ projectName, onExample }) {
               style={{
                 height: 'auto', padding: '12px 16px', textAlign: 'left',
                 whiteSpace: 'normal', lineHeight: 1.5, borderRadius: 10,
-                borderColor: '#b7eb8f', background: '#fff',
+                borderColor: agentMode ? '#52c41a' : '#b7eb8f', background: '#fff',
               }}>
-              <MessageOutlined style={{ marginRight: 8, color: '#52c41a' }} />{q}
+              {agentMode
+                ? <RobotOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+                : <MessageOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+              }
+              {q}
             </Button>
           ))}
         </div>

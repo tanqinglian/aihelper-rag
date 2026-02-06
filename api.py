@@ -13,7 +13,7 @@ from config import OLLAMA_BASE_URL, EMBED_MODEL, LLM_MODEL, RERANK_ENABLED, RERA
 from models import (
     Project, ProjectConfig, ProjectStatus,
     CreateProjectRequest, UpdateProjectRequest,
-    AskRequest, AskResponse
+    AskRequest, AskResponse, AgentAskRequest
 )
 from project_manager import project_manager
 from retriever import retrieve_by_project
@@ -239,6 +239,73 @@ def ask_stream(req: AskRequest):
             "Connection": "keep-alive",
         }
     )
+
+
+# ============ Agent 多轮推理接口 ============
+
+@app.post("/ask/agent")
+def ask_agent(req: AgentAskRequest):
+    """Agent 多轮推理（SSE 流式返回推理过程）"""
+    from agent import CodeAgent
+
+    # 验证项目
+    valid_project_ids = []
+    for pid in req.project_ids:
+        project = project_manager.get_project(pid)
+        if project and project.status == ProjectStatus.INDEXED:
+            valid_project_ids.append(pid)
+
+    if not valid_project_ids:
+        raise HTTPException(400, "没有可用的已索引项目")
+
+    agent = CodeAgent(
+        project_ids=valid_project_ids,
+        max_rounds=min(req.max_rounds, 8)  # 硬上限 8 轮
+    )
+
+    def event_generator():
+        steps = []
+        final_answer = ""
+        sources = []
+
+        for step in agent.run(req.question):
+            step_data = {
+                "step_type": step.step_type,
+                "content": step.content,
+                "round": step.round,
+                "metadata": step.metadata
+            }
+            steps.append(step_data)
+
+            yield f"data: {json.dumps({'type': 'step', 'data': step_data}, ensure_ascii=False)}\n\n"
+
+            if step.step_type == "final_answer":
+                final_answer = step.content
+                sources = step.metadata.get("sources", []) if step.metadata else []
+
+        yield f"data: {json.dumps({'type': 'complete', 'data': {'answer': final_answer, 'sources': sources, 'total_steps': len(steps)}}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+@app.get("/projects/indexed")
+def list_indexed_projects():
+    """获取已索引项目列表"""
+    projects = project_manager.list_projects()
+    indexed = [p for p in projects if p.status == ProjectStatus.INDEXED]
+    return {
+        "projects": [
+            {"id": p.id, "name": p.name, "file_count": p.file_count}
+            for p in indexed
+        ]
+    }
 
 
 # ============ 监控接口 ============
