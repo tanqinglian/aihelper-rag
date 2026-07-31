@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout, Button, Select, Typography, Tag, Input, Tooltip, Divider, Space, Empty, Switch } from 'antd';
 import {
@@ -10,11 +10,20 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import mermaid from 'mermaid';
 import { ChatProvider, useChatContext } from '../contexts/ChatContext';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { useStreamingChat } from '../hooks/useStreamingChat';
 import { useAgentChat } from '../hooks/useAgentChat';
 import AgentStepsPanel from '../components/AgentStepsPanel';
+
+// 初始化 Mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'default',
+  securityLevel: 'loose',
+  fontFamily: 'inherit',
+});
 
 const { Sider, Content } = Layout;
 const { Text, Title } = Typography;
@@ -302,6 +311,10 @@ function ChatMainArea({ agentMode, selectedAgentProjects }) {
   };
 
   const handleKeyDown = (e) => {
+    // 检测是否正在使用输入法输入（如中文输入法选字时按回车）
+    if (e.nativeEvent.isComposing || e.keyCode === 229) {
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -517,6 +530,12 @@ function CodeBlock({ language, code }) {
   const handleCopy = async () => {
     try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {}
   };
+
+  // Mermaid 图表特殊处理
+  if (language === 'mermaid') {
+    return <MermaidBlock code={code} />;
+  }
+
   return (
     <div style={{ margin: '16px 0', borderRadius: 8, overflow: 'hidden', border: '1px solid #d9f7be' }}>
       <div style={{
@@ -534,6 +553,58 @@ function CodeBlock({ language, code }) {
         customStyle={{ margin: 0, padding: 16, background: '#fff', fontSize: 13 }}>
         {code}
       </SyntaxHighlighter>
+    </div>
+  );
+}
+
+/* ===================== Mermaid 图表 ===================== */
+function MermaidBlock({ code }) {
+  const containerRef = useRef(null);
+  const [svg, setSvg] = useState('');
+  const [error, setError] = useState(null);
+  const id = useId().replace(/:/g, '_');
+
+  useEffect(() => {
+    const renderDiagram = async () => {
+      if (!code.trim()) return;
+      try {
+        // 验证语法
+        await mermaid.parse(code);
+        // 渲染 SVG
+        const { svg } = await mermaid.render(`mermaid-${id}`, code);
+        setSvg(svg);
+        setError(null);
+      } catch (err) {
+        console.error('Mermaid render error:', err);
+        setError(err.message || '图表渲染失败');
+        setSvg('');
+      }
+    };
+    renderDiagram();
+  }, [code, id]);
+
+  if (error) {
+    return (
+      <div style={{
+        margin: '16px 0', padding: 16, background: '#fff2f0',
+        border: '1px solid #ffccc7', borderRadius: 8, fontSize: 13,
+      }}>
+        <div style={{ color: '#ff4d4f', marginBottom: 8 }}>Mermaid 图表渲染失败</div>
+        <pre style={{ margin: 0, fontSize: 12, color: '#666', whiteSpace: 'pre-wrap' }}>{code}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      margin: '16px 0', padding: 16, background: '#fff',
+      border: '1px solid #d9f7be', borderRadius: 8, overflow: 'auto',
+    }}>
+      <div
+        ref={containerRef}
+        dangerouslySetInnerHTML={{ __html: svg }}
+        style={{ display: 'flex', justifyContent: 'center' }}
+      />
     </div>
   );
 }

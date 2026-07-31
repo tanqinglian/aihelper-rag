@@ -51,10 +51,21 @@ class CodeChunk(BaseModel):
 
 class ProjectConfig(BaseModel):
     """项目配置"""
+    project_type: str = "frontend"  # "frontend" | "backend"
     extensions: list[str] = [".js", ".jsx", ".ts", ".tsx", ".less", ".css", ".vue"]
     ignore_dirs: list[str] = ["node_modules", ".umi", ".umi-production", "dist", ".git", "__pycache__"]
     max_file_chars: int = 6000
     preprocessor: PreprocessorConfig = Field(default_factory=PreprocessorConfig)
+
+    @classmethod
+    def for_java(cls) -> "ProjectConfig":
+        """Java 后端项目默认配置"""
+        return cls(
+            project_type="backend",
+            extensions=[".java"],
+            ignore_dirs=[".git", "target", "build", ".idea", "test", "src/test"],
+            max_file_chars=8000,
+        )
 
 
 class Project(BaseModel):

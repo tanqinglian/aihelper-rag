@@ -11,6 +11,8 @@ class CodeCleaner:
         r'^\s*console\.(log|debug|info|warn|error|trace|dir|table|time|timeEnd|group|groupEnd|assert|count|clear)\s*\([^;]*\);?\s*$',
         r'^\s*debugger\s*;?\s*$',
         r'^\s*alert\s*\([^;]*\)\s*;?\s*$',
+        r'^\s*System\.out\.print(?:ln|f)?\s*\([^;]*\);?\s*$',  # Java debug
+        r'^\s*log\.(debug|trace)\s*\([^;]*\);?\s*$',            # Java log.debug
     ]
 
     ESLINT_PATTERNS = [
@@ -155,6 +157,9 @@ class CodeChunker:
 
         if file_ext in ('.less', '.css'):
             return self._chunk_style(content, file_path)
+
+        if file_ext == '.java':
+            return self._chunk_java(content, file_path)
 
         return self._semantic_chunk(content, file_path, file_ext)
 
@@ -447,7 +452,142 @@ class CodeChunker:
 
         return merged
 
-    def _sliding_window_chunk(self, content: str, file_path: str) -> list[dict]:
+    def _chunk_java(self, content: str, file_path: str) -> list[dict]:
+        """
+        Java 文件分块 - 按方法切割，每个 chunk 携带类级别上下文
+        适用于 Controller / Service / Entity
+        """
+        lines = content.split('\n')
+
+        # 找到类声明行（含 @RestController / @Service 等注解）
+        class_header_end = 0
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if re.match(r'(?:public\s+)?(?:abstract\s+)?(?:class|interface|enum)\s+\w+', stripped):
+                # 找到 class opening brace
+                for j in range(i, min(i + 5, len(lines))):
+                    if '{' in lines[j]:
+                        class_header_end = j + 1
+                        break
+                else:
+                    class_header_end = i + 1
+                break
+
+        if class_header_end == 0:
+            # 没找到类声明（如 package-info.java），整体作为一块
+            return [{"content": content, "type": "class", "start": 0, "end": len(lines) - 1, "name": ""}]
+
+        class_header = '\n'.join(lines[:class_header_end])
+        body_lines = lines[class_header_end:]
+
+        # 在类体中找方法边界
+        methods = self._find_java_methods(body_lines, class_header_end)
+
+        if not methods:
+            # 没找到方法（如纯 Entity），整体作为一块
+            if len(content) <= self.config.chunk_max_chars:
+                return [{"content": content, "type": "class", "start": 0, "end": len(lines) - 1, "name": ""}]
+            return self._sliding_window_chunk(content, file_path)
+
+        # 类头部最多保留 25 行（避免过长的 import 段）
+        header_preview = '\n'.join(lines[:min(class_header_end, 25)])
+
+        chunks = []
+        for method in methods:
+            chunk_content = header_preview + '\n\n' + method['content']
+            chunks.append({
+                "content": chunk_content,
+                "type": method['type'],
+                "start": method['start'],
+                "end": method['end'],
+                "name": method['name'],
+            })
+
+        return chunks
+
+    def _find_java_methods(self, body_lines: list[str], offset: int) -> list[dict]:
+        """在类体中找到所有方法"""
+        methods = []
+        i = 0
+
+        while i < len(body_lines):
+            line = body_lines[i]
+            stripped = line.strip()
+
+            # 跳过空行和字段声明（没有方法体的）
+            if not stripped or stripped.startswith('//') or stripped.startswith('*'):
+                i += 1
+                continue
+
+            # 方法开始标志：注解行 或 访问修饰符开头
+            is_method_start = (
+                stripped.startswith('@') or
+                re.match(r'(?:public|private|protected|static|default)\s+', stripped)
+            )
+
+            if not is_method_start:
+                i += 1
+                continue
+
+            # 从当前行开始，找方法边界
+            method_start = i
+            depth = 0
+            has_brace = False
+
+            j = i
+            while j < len(body_lines):
+                for ch in body_lines[j]:
+                    if ch == '{':
+                        depth += 1
+                        has_brace = True
+                    elif ch == '}':
+                        depth -= 1
+
+                if has_brace and depth == 0:
+                    method_end = j
+                    method_content = '\n'.join(body_lines[method_start:method_end + 1])
+
+                    # 确认是方法（有花括号）且不是空的类体
+                    if len(method_content.strip()) > 10:
+                        method_name = self._extract_java_method_name(body_lines[method_start:method_end + 1])
+                        chunk_type = self._detect_java_chunk_type(method_content)
+
+                        methods.append({
+                            "start": offset + method_start,
+                            "end": offset + method_end,
+                            "name": method_name,
+                            "type": chunk_type,
+                            "content": method_content,
+                        })
+
+                    i = method_end + 1
+                    break
+
+                j += 1
+            else:
+                i += 1
+
+        return methods
+
+    def _extract_java_method_name(self, lines: list[str]) -> str:
+        """从方法行中提取方法名"""
+        for line in lines:
+            m = re.search(r'(?:public|private|protected)\s+[\w<>\[\],\s]+\s+(\w+)\s*\(', line)
+            if m:
+                return m.group(1)
+        return ""
+
+    def _detect_java_chunk_type(self, content: str) -> str:
+        """检测 Java chunk 类型"""
+        if re.search(r'@(?:Get|Post|Put|Delete|Patch|Request)Mapping', content):
+            return "api_endpoint"
+        if re.search(r'@(?:Override|Transactional)', content):
+            return "service_method"
+        if re.search(r'@(?:Column|Id|GeneratedValue|ManyToOne|OneToMany)', content):
+            return "entity_field"
+        return "method"
+
+
         """滑动窗口分块作为备选"""
         lines = content.split('\n')
         chunks = []
@@ -509,6 +649,23 @@ class MetadataExtractor:
         r'(?:export\s+)?enum\s+(\w+)',
     ]
 
+    # Java 专用
+    JAVA_METHOD_PATTERNS = [
+        r'(?:public|private|protected)\s+[\w<>\[\],\s]+\s+(\w+)\s*\(',
+    ]
+    JAVA_CLASS_PATTERNS = [
+        r'(?:public\s+)?(?:abstract\s+)?class\s+(\w+)',
+        r'(?:public\s+)?interface\s+(\w+)',
+    ]
+    JAVA_ROUTE_PATTERNS = [
+        r'@(?:Get|Post|Put|Delete|Patch)Mapping\s*\(\s*["\']([^"\']+)["\']',
+        r'@(?:Get|Post|Put|Delete|Patch)Mapping\s*\(\s*value\s*=\s*["\']([^"\']+)["\']',
+        r'@RequestMapping\s*\(\s*["\']([^"\']+)["\']',
+        r'@RequestMapping\s*\(\s*value\s*=\s*["\']([^"\']+)["\']',
+        r'@(?:Get|Post|Put|Delete|Patch)Mapping\s*\(\s*\)',   # 无路径参数
+        r'@(?:Get|Post|Put|Delete|Patch)Mapping\s*$',         # 无括号
+    ]
+
     def __init__(self, config: PreprocessorConfig):
         self.config = config
 
@@ -517,6 +674,9 @@ class MetadataExtractor:
         if not self.config.extract_metadata:
             return {}
 
+        if file_ext == '.java':
+            return self._extract_java(content)
+
         return {
             "functions": self._extract_functions(content),
             "classes": self._extract_classes(content),
@@ -524,6 +684,35 @@ class MetadataExtractor:
             "imports": self._extract_imports(content),
             "exports": self._extract_exports(content),
             "types": self._extract_types(content),
+        }
+
+    def _extract_java(self, content: str) -> dict:
+        """提取 Java 元数据"""
+        # 类名
+        classes = []
+        for pattern in self.JAVA_CLASS_PATTERNS:
+            classes.extend(re.findall(pattern, content, re.MULTILINE))
+
+        # 方法名
+        functions = []
+        for pattern in self.JAVA_METHOD_PATTERNS:
+            functions.extend(re.findall(pattern, content, re.MULTILINE))
+
+        # API 路由（用 exports 字段存储，方便 DesignAgent 检索）
+        routes = []
+        for pattern in self.JAVA_ROUTE_PATTERNS:
+            routes.extend(re.findall(pattern, content, re.MULTILINE))
+
+        # 依赖注入的 Service（imports 字段）
+        injected = re.findall(r'@(?:Resource|Autowired)\s+private\s+\w+\s+(\w+)', content)
+
+        return {
+            "functions": list(set(functions))[:20],
+            "classes": list(set(classes))[:5],
+            "components": [],
+            "imports": list(set(injected))[:10],
+            "exports": list(set(routes))[:10],  # 存路由路径
+            "types": [],
         }
 
     def _extract_functions(self, content: str) -> list[str]:

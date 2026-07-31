@@ -42,16 +42,13 @@ def retrieve_by_project(query: str, project_id: str, top_k: int = TOP_K) -> list
     query_embedding = get_embedding(query)
     query_vector = np.array(query_embedding, dtype=np.float32)
 
-    # 使用 LanceDB 向量搜索
-    results = table.search(query_vector).limit(top_k).to_list()
+    # cosine 距离范围 [0, 2]，0=完全相似 → score = 1 - distance/2，范围 [0, 1]
+    results = table.search(query_vector).metric("cosine").limit(top_k).to_list()
 
-    # 转换为原有格式
     items = []
     for r in results:
-        # LanceDB 返回的 _distance 是 L2 距离，转换为相似度
-        # 使用 1 / (1 + distance) 作为相似度分数
-        distance = r.get("_distance", 0)
-        score = 1 / (1 + distance)
+        distance = r.get("_distance", 1.0)
+        score = max(0.0, 1.0 - distance / 2.0)
 
         items.append({
             "path": r.get("path", ""),
@@ -175,12 +172,12 @@ def retrieve(query: str, top_k: int = TOP_K) -> list[dict]:
     query_embedding = get_embedding(query)
     query_vector = np.array(query_embedding, dtype=np.float32)
 
-    results = table.search(query_vector).limit(top_k).to_list()
+    results = table.search(query_vector).metric("cosine").limit(top_k).to_list()
 
     items = []
     for r in results:
-        distance = r.get("_distance", 0)
-        score = 1 / (1 + distance)
+        distance = r.get("_distance", 1.0)
+        score = max(0.0, 1.0 - distance / 2.0)
 
         items.append({
             "path": r.get("path", ""),

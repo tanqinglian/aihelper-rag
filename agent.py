@@ -14,7 +14,7 @@ from datetime import datetime
 
 import httpx
 
-from config import OLLAMA_BASE_URL, LLM_MODEL
+from config import OLLAMA_BASE_URL, LLM_MODEL, LLM_PROVIDER, ZHIPU_API_KEY, ZHIPU_BASE_URL, ZHIPU_LLM_MODEL
 from retriever import retrieve_by_project, retrieve_multi_project, retrieve_by_path, get_all_project_ids
 from models import AgentStep
 
@@ -27,7 +27,7 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "query": "搜索查询词 - 描述你要找的代码功能",
             "project_ids": "项目 ID 列表，可选，默认搜索所有项目",
-            "top_k": "每个项目返回的结果数，默认 3"
+            "top_k": "每个项目返回的结果数，默认 10"
         }
     },
     {
@@ -78,7 +78,7 @@ class AgentToolExecutor:
             return self._multi_search(
                 query=arguments.get("query", ""),
                 project_ids=arguments.get("project_ids", self.available_project_ids),
-                top_k=arguments.get("top_k", 3)
+                top_k=arguments.get("top_k", 10)
             )
         elif tool_name == "trace_api":
             return self._trace_api(
@@ -98,7 +98,7 @@ class AgentToolExecutor:
         else:
             return {"error": f"未知工具: {tool_name}"}
 
-    def _multi_search(self, query: str, project_ids: list[str], top_k: int = 3) -> dict:
+    def _multi_search(self, query: str, project_ids: list[str], top_k: int = 10) -> dict:
         """跨项目搜索"""
         if not project_ids or project_ids == ["all"]:
             project_ids = self.available_project_ids
@@ -158,7 +158,7 @@ class AgentToolExecutor:
 
         for query, category in search_patterns[:6]:  # 限制搜索次数
             for pid in project_ids:
-                docs = retrieve_by_project(query, pid, 2)
+                docs = retrieve_by_project(query, pid, 8)
                 for d in docs:
                     if d["path"] in seen_paths:
                         continue
@@ -196,7 +196,7 @@ class AgentToolExecutor:
         if not project_id:
             # 尝试在所有项目中查找
             for pid in self.available_project_ids:
-                docs = retrieve_by_path(pid, file_path, 5)
+                docs = retrieve_by_path(pid, file_path, 10)
                 if docs:
                     project_id = pid
                     break
@@ -204,7 +204,7 @@ class AgentToolExecutor:
         if not project_id:
             return {"error": f"未找到文件: {file_path}"}
 
-        docs = retrieve_by_path(project_id, file_path, 5)
+        docs = retrieve_by_path(project_id, file_path, 10)
 
         if not docs:
             return {"error": f"未找到文件: {file_path}"}
@@ -241,7 +241,7 @@ class AgentToolExecutor:
         query = f"function {name} export {name} const {name}"
 
         for pid in project_ids:
-            docs = retrieve_by_project(query, pid, 5)
+            docs = retrieve_by_project(query, pid, 10)
             # 过滤精确匹配
             matched = [
                 {
@@ -304,11 +304,75 @@ class CodeAgent:
    - 如果需要找特定函数，使用 search_function
 4. 收集足够信息后，给出完整的分析答案
 
+## 输出格式指南
+根据问题类型，使用合适的结构化格式展示结果：
+
+### 1. 项目/目录结构 → 使用树形图
+```
+src/
+├── pages/           # 页面组件
+│   ├── Home/
+│   └── Order/
+├── components/      # 公共组件
+├── services/        # API 服务
+└── utils/           # 工具函数
+```
+
+### 2. 模块/功能对照 → 使用表格
+| 模块 | 文件路径 | 主要功能 | 依赖 |
+|------|----------|----------|------|
+| 订单管理 | pages/Order/index.jsx | 订单列表、详情 | OrderService |
+| 用户中心 | pages/User/index.jsx | 用户信息管理 | UserAPI |
+
+### 3. 调用链/流程 → 使用 Mermaid 流程图
+```mermaid
+graph LR
+    A[前端页面] --> B[API 请求]
+    B --> C[后端 Controller]
+    C --> D[Service 层]
+    D --> E[数据库]
+```
+
+### 4. 组件/类关系 → 使用 Mermaid 类图
+```mermaid
+classDiagram
+    OrderPage --> OrderService
+    OrderService --> API
+    OrderPage --> OrderList
+    OrderPage --> OrderDetail
+```
+
+### 5. 状态流转/生命周期 → 使用 Mermaid 状态图
+```mermaid
+stateDiagram-v2
+    [*] --> 待支付
+    待支付 --> 已支付: 支付成功
+    已支付 --> 已发货: 发货
+    已发货 --> 已完成: 确认收货
+```
+
+### 6. 时序/交互流程 → 使用 Mermaid 时序图
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant F as 前端
+    participant B as 后端
+    participant D as 数据库
+    U->>F: 点击提交
+    F->>B: POST /api/order
+    B->>D: INSERT order
+    D-->>B: success
+    B-->>F: 200 OK
+    F-->>U: 提示成功
+```
+
 ## 回答要求
 - 调用工具时，只输出 JSON，不要有其他文字
 - 给出最终答案时，不要输出 JSON
 - 答案中要引用具体的文件路径
 - 如果涉及前后端，说明调用链路
+- **优先使用结构化格式（表格、Mermaid 图）展示复杂信息**
+- 确保 Mermaid 代码块语法正确，可以直接渲染
 
 ## 可用项目
 {', '.join(self.project_ids)}
@@ -339,19 +403,34 @@ class CodeAgent:
         return None
 
     def _call_llm(self, messages: list[dict]) -> str:
-        """调用 Ollama LLM"""
-        resp = httpx.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json={
-                "model": LLM_MODEL,
-                "messages": messages,
-                "stream": False,
-                "options": {"temperature": 0.2}  # 低温度，更稳定的工具调用
-            },
-            timeout=httpx.Timeout(timeout=300.0)
-        )
-        resp.raise_for_status()
-        return resp.json()["message"]["content"]
+        """调用 LLM（支持 zhipu / ollama）"""
+        if LLM_PROVIDER == "zhipu":
+            resp = httpx.post(
+                f"{ZHIPU_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {ZHIPU_API_KEY}"},
+                json={
+                    "model": ZHIPU_LLM_MODEL,
+                    "messages": messages,
+                    "stream": False,
+                    "temperature": 0.2,
+                },
+                timeout=httpx.Timeout(timeout=120.0),
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        else:
+            resp = httpx.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": LLM_MODEL,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {"temperature": 0.2}
+                },
+                timeout=httpx.Timeout(timeout=300.0)
+            )
+            resp.raise_for_status()
+            return resp.json()["message"]["content"]
 
     def run(self, question: str) -> Generator[AgentStep, None, None]:
         """
@@ -475,7 +554,7 @@ class CodeAgent:
                     sources.append({
                         "project_id": project_id,
                         "path": d.get("path", ""),
-                        "score": d.get("score", 0)
+                        "score": d.get("score", 0.5)
                     })
 
         # trace_api 结果
@@ -485,6 +564,7 @@ class CodeAgent:
                     sources.append({
                         "project_id": item.get("project_id", ""),
                         "path": item.get("path", ""),
+                        "score": item.get("score", 0.5),
                         "category": category
                     })
 
@@ -492,7 +572,8 @@ class CodeAgent:
         if "chunks" in result:
             sources.append({
                 "project_id": result.get("project_id", ""),
-                "path": result.get("path", "")
+                "path": result.get("path", ""),
+                "score": 1.0  # 精确匹配
             })
 
         # search_function 结果
@@ -501,17 +582,19 @@ class CodeAgent:
                 for d in docs:
                     sources.append({
                         "project_id": project_id,
-                        "path": d.get("path", "")
+                        "path": d.get("path", ""),
+                        "score": d.get("score", 0.5)
                     })
 
         return sources
 
     def _summarize_results(self, tool_results: list[dict], question: str) -> str:
-        """汇总工具结果生成答案"""
+        """汇总工具结果，调用 LLM 生成最终答案"""
         if not tool_results:
             return "未能找到相关代码信息。"
 
-        summary_parts = []
+        # 收集所有代码片段
+        code_snippets = []
         for tr in tool_results:
             tool = tr["tool"]
             result = tr["result"]
@@ -519,14 +602,81 @@ class CodeAgent:
             if tool == "multi_search" and "results" in result:
                 for pid, docs in result["results"].items():
                     for d in docs:
-                        summary_parts.append(f"- {pid}: {d.get('path', '')}")
+                        code_snippets.append({
+                            "project": pid,
+                            "path": d.get("path", ""),
+                            "content": d.get("content", "")[:600],
+                            "functions": d.get("functions", ""),
+                            "exports": d.get("exports", ""),
+                        })
 
             elif tool == "trace_api" and "traces" in result:
-                summary_parts.append(f"API 追踪: {result.get('summary', '')}")
+                for category, items in result["traces"].items():
+                    for item in items:
+                        code_snippets.append({
+                            "project": item.get("project_id", ""),
+                            "path": item.get("path", ""),
+                            "content": item.get("content", "")[:600],
+                            "category": category,
+                        })
 
-        if summary_parts:
-            return "找到以下相关代码:\n" + "\n".join(summary_parts[:15])
-        return "未能找到相关代码信息。"
+            elif tool == "get_file" and "chunks" in result:
+                for chunk in result["chunks"]:
+                    code_snippets.append({
+                        "project": result.get("project_id", ""),
+                        "path": result.get("path", ""),
+                        "content": chunk.get("content", "")[:800],
+                    })
+
+            elif tool == "search_function" and "results" in result:
+                for pid, docs in result["results"].items():
+                    for d in docs:
+                        code_snippets.append({
+                            "project": pid,
+                            "path": d.get("path", ""),
+                            "content": d.get("content", "")[:600],
+                        })
+
+        if not code_snippets:
+            return "搜索了多轮但未找到明确相关的代码。"
+
+        # 构建上下文
+        context_parts = []
+        for i, snippet in enumerate(code_snippets[:15], 1):  # 限制数量
+            context_parts.append(
+                f"--- [{snippet.get('project', '')}] {snippet.get('path', '')} ---\n"
+                f"{snippet.get('content', '')}"
+            )
+
+        context = "\n\n".join(context_parts)
+
+        # 调用 LLM 生成总结
+        summary_prompt = f"""基于以下收集到的代码片段，回答用户的问题。
+
+## 用户问题
+{question}
+
+## 收集到的代码
+{context}
+
+## 要求
+1. 直接回答问题，不要说"根据代码片段"之类的话
+2. 引用具体的文件路径
+3. 如果涉及调用链，说明完整流程
+4. 使用表格或列表组织信息
+5. 如果信息不足，说明还需要查看哪些文件"""
+
+        try:
+            messages = [
+                {"role": "system", "content": "你是一个代码分析专家，擅长阅读代码并给出清晰的分析。"},
+                {"role": "user", "content": summary_prompt}
+            ]
+            answer = self._call_llm(messages)
+            return answer
+        except Exception as e:
+            # 降级：简单列出文件
+            file_list = list(set(s.get("path", "") for s in code_snippets if s.get("path")))
+            return f"找到 {len(file_list)} 个相关文件:\n" + "\n".join(f"- {f}" for f in file_list[:15])
 
 
 if __name__ == "__main__":

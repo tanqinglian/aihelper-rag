@@ -1,25 +1,65 @@
 {
   "projects": [
     {
-      "id": "a7bca53d",
-      "name": "goods",
-      "source_dir": "/Users/gaotu/project-tu/gaotu-fe-goodsmanage",
+      "id": "46a9836d",
+      "name": "gaotu-fe-solo",
+      "source_dir": "/Users/gaotu/project-tu/gaotu-fe-solo",
       "config": {
+        "project_type": "frontend",
         "extensions": [
           ".js",
           ".jsx",
           ".ts",
-          ".tsx",
-          ".less",
-          ".css",
-          ".vue"
+          ".tsx"
         ],
         "ignore_dirs": [
           "node_modules",
           ".umi",
-          ".git",
           "dist",
-          "__pycache__"
+          ".git",
+          "__pycache__",
+          "mock"
+        ],
+        "max_file_chars": 6000,
+        "preprocessor": {
+          "remove_comments": true,
+          "remove_debug_statements": true,
+          "remove_eslint_comments": true,
+          "normalize_whitespace": true,
+          "chunk_strategy": "semantic",
+          "chunk_max_chars": 1500,
+          "chunk_min_chars": 200,
+          "chunk_overlap_lines": 3,
+          "max_chunk_chars": 2000,
+          "extract_metadata": true
+        }
+      },
+      "status": "idle",
+      "file_count": 0,
+      "index_size_bytes": 0,
+      "last_indexed_at": null,
+      "created_at": "2026-03-06 17:02:03.538730",
+      "error_message": null
+    },
+    {
+      "id": "b5564ab0",
+      "name": "gaotu-fe-goodsmanage",
+      "source_dir": "/Users/gaotu/project-tu/gaotu-fe-goodsmanage",
+      "config": {
+        "project_type": "frontend",
+        "extensions": [
+          ".js",
+          ".jsx",
+          ".ts",
+          ".tsx"
+        ],
+        "ignore_dirs": [
+          "node_modules",
+          ".umi",
+          "dist",
+          ".git",
+          "__pycache__",
+          "mock"
         ],
         "max_file_chars": 6000,
         "preprocessor": {
@@ -36,12 +76,179 @@
         }
       },
       "status": "indexed",
-      "file_count": 3143,
+      "file_count": 2756,
       "index_size_bytes": 0,
-      "last_indexed_at": "2026-02-05 13:56:59.875682",
-      "created_at": "2026-02-05 13:47:10.431003",
+      "last_indexed_at": "2026-03-06 17:54:38.926039",
+      "created_at": "2026-03-06 17:02:03.551469",
       "error_message": null,
-      "indexed_at": "2026-02-05T13:56:59"
+      "indexed_at": "2026-03-06T17:54:38"
+    },
+    {
+      "id": "49916eec",
+      "name": "gps-operation",
+      "source_dir": "/Users/gaotu/project-tu/gps-operation",
+      "config": {
+        "project_type": "frontend",
+        "extensions": [
+          ".js",
+          ".jsx",
+          ".ts",
+          ".tsx"
+        ],
+        "ignore_dirs": [
+          "node_modules",
+          ".umi",
+          "dist",
+          ".git",
+          "__pycache__",
+          "mock"
+        ],
+        "max_file_chars": 6000,
+        "preprocessor": {
+          "remove_comments": true,
+          "remove_debug_statements": true,
+          "remove_eslint_comments": true,
+          "normalize_whitespace": true,
+          "chunk_strategy": "semantic",
+          "chunk_max_chars": 1500,
+          "chunk_min_chars": 200,
+          "chunk_overlap_lines": 3,
+          "max_chunk_chars": 2000,
+          "extract_metadata": true
+        }
+      },
+      "status": "indexed",
+      "file_count": 337,
+      "index_size_bytes": 0,
+      "last_indexed_at": "2026-03-06 17:04:03.368540",
+      "created_at": "2026-03-06 17:02:03.561462",
+      "error_message": null,
+      "indexed_at": "2026-03-06T17:04:03"
+    },
+    {
+      "id": "ddb50cd6",
+      "name": "gaotu-yunfan-fe",
+      "source_dir": "/Users/gaotu/project-tu/gaotu_yunfan_fe",
+      "config": {
+        "project_type": "frontend",
+        "extensions": [
+          ".js",
+          ".jsx",
+          ".ts",
+          ".tsx"
+        ],
+        "ignore_dirs": [
+          "node_modules",
+          ".umi",
+          "dist",
+          ".git",
+          "__pycache__",
+          "mock"
+        ],
+        "max_file_chars": 6000,
+        "preprocessor": {
+          "remove_comments": true,
+          "remove_debug_statements": true,
+          "remove_eslint_comments": true,
+          "normalize_whitespace": true,
+          "chunk_strategy": "semantic",
+          "chunk_max_chars": 1500,
+          "chunk_min_chars": 200,
+          "chunk_overlap_lines": 3,
+          "max_chunk_chars": 2000,
+          "extract_metadata": true
+        }
+      },
+      "status": "idle",
+      "file_count": 0,
+      "index_size_bytes": 0,
+      "last_indexed_at": null,
+      "created_at": "2026-03-06 17:02:03.571019",
+      "error_message": null
+    },
+    {
+      "id": "383b3858",
+      "name": "course-scene-lifecycle",
+      "source_dir": "/Users/gaotu/background/course-scene-lifecycle",
+      "config": {
+        "project_type": "backend",
+        "extensions": [
+          ".java"
+        ],
+        "ignore_dirs": [
+          ".git",
+          "target",
+          "build",
+          ".idea"
+        ],
+        "max_file_chars": 8000,
+        "preprocessor": {
+          "remove_comments": true,
+          "remove_debug_statements": true,
+          "remove_eslint_comments": true,
+          "normalize_whitespace": true,
+          "chunk_strategy": "semantic",
+          "chunk_max_chars": 1500,
+          "chunk_min_chars": 200,
+          "chunk_overlap_lines": 3,
+          "max_chunk_chars": 2000,
+          "extract_metadata": true
+        }
+      },
+      "status": "indexed",
+      "file_count": 4708,
+      "index_size_bytes": 0,
+      "last_indexed_at": "2026-03-06 18:00:36.779743",
+      "created_at": "2026-03-06 17:02:03.580725",
+      "error_message": null,
+      "indexed_at": "2026-03-06T18:00:36"
+    },
+    {
+      "id": "7470cf3f",
+      "name": "course-center",
+      "source_dir": "/Users/gaotu/background/course-center",
+      "config": {
+        "project_type": "frontend",
+        "extensions": [
+          ".java",
+          ".xml"
+        ],
+        "ignore_dirs": [
+          "target",
+          ".git",
+          ".idea",
+          ".mvn",
+          "logs",
+          "auto",
+          "build",
+          "out",
+          "bin",
+          "node_modules",
+          ".settings",
+          ".classpath",
+          ".project"
+        ],
+        "max_file_chars": 8000,
+        "preprocessor": {
+          "remove_comments": true,
+          "remove_debug_statements": true,
+          "remove_eslint_comments": true,
+          "normalize_whitespace": true,
+          "chunk_strategy": "semantic",
+          "chunk_max_chars": 1500,
+          "chunk_min_chars": 200,
+          "chunk_overlap_lines": 3,
+          "max_chunk_chars": 2000,
+          "extract_metadata": true
+        }
+      },
+      "status": "indexed",
+      "file_count": 19069,
+      "index_size_bytes": 0,
+      "last_indexed_at": "2026-03-10 16:15:58.833429",
+      "created_at": "2026-03-10 15:04:46.918556",
+      "error_message": null,
+      "indexed_at": "2026-03-10T16:15:58"
     }
   ]
 }

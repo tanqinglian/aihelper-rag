@@ -1,6 +1,7 @@
 """FastAPI 服务"""
 import os
 import json
+import uuid
 import httpx
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
@@ -20,6 +21,7 @@ from retriever import retrieve_by_project
 from reranker import rerank_documents
 from generator import generate_with_docs, generate_stream_with_docs
 from indexer import index_project_stream
+from feishu_client import fetch_feishu_doc
 
 app = FastAPI(title="Code RAG", description="代码知识库问答系统")
 
@@ -469,6 +471,129 @@ def validate_path(path: str):
         "valid": exists,
         "message": "目录存在" if exists else "目录不存在"
     }
+
+
+# ============ 详细设计接口 ============
+
+DESIGNS_FILE = os.path.join(os.path.dirname(__file__), "data", "designs.json")
+
+
+def _load_designs() -> list:
+    if not os.path.exists(DESIGNS_FILE):
+        return []
+    with open(DESIGNS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_design(record: dict):
+    designs = _load_designs()
+    designs.insert(0, record)
+    designs = designs[:100]
+    with open(DESIGNS_FILE, "w", encoding="utf-8") as f:
+        json.dump(designs, f, ensure_ascii=False, indent=2)
+
+
+class DesignRequest(BaseModel):
+    feishu_url: Optional[str] = None
+    requirement_text: Optional[str] = None  # 直接输入文本时使用
+
+
+@app.get("/design/fetch-doc")
+def fetch_doc(url: str):
+    """从飞书文档 URL 获取内容"""
+    try:
+        doc = fetch_feishu_doc(url)
+        return doc
+    except Exception as e:
+        raise HTTPException(400, f"获取飞书文档失败: {str(e)}")
+
+
+@app.post("/design/generate")
+def design_generate(req: DesignRequest):
+    """生成详细设计文档（SSE 流式）"""
+    from design_agent import DesignAgent
+
+    # 获取需求内容
+    if req.feishu_url:
+        try:
+            doc = fetch_feishu_doc(req.feishu_url)
+            requirement = doc["content"]
+            doc_title = doc["title"]
+        except Exception as e:
+            raise HTTPException(400, f"获取飞书文档失败: {str(e)}")
+    elif req.requirement_text:
+        requirement = req.requirement_text
+        doc_title = ""
+    else:
+        raise HTTPException(400, "请提供 feishu_url 或 requirement_text")
+
+    # 按 project_type 分类已索引的项目
+    all_projects = project_manager.list_projects()
+    indexed = [p for p in all_projects if p.status == ProjectStatus.INDEXED]
+    frontend_ids = [p.id for p in indexed if p.config.project_type == "frontend"]
+    backend_ids = [p.id for p in indexed if p.config.project_type == "backend"]
+
+    if not frontend_ids and not backend_ids:
+        raise HTTPException(400, "没有已索引的项目，请先在训练页面完成索引")
+
+    agent = DesignAgent(frontend_ids, backend_ids, max_rounds=10)
+
+    def event_generator():
+        final_doc = ""
+        for step in agent.run(requirement, doc_title):
+            step_data = {
+                "step_type": step.step_type,
+                "content": step.content,
+                "round": step.round,
+                "metadata": step.metadata,
+            }
+            yield f"data: {json.dumps({'type': 'step', 'data': step_data}, ensure_ascii=False)}\n\n"
+
+            if step.step_type == "final_answer":
+                final_doc = step.content
+                _save_design({
+                    "id": str(uuid.uuid4())[:8],
+                    "title": doc_title or "未命名需求",
+                    "feishu_url": req.feishu_url or "",
+                    "document": final_doc,
+                    "created_at": datetime.now().isoformat(),
+                })
+
+        yield f"data: {json.dumps({'type': 'complete', 'data': {'document': final_doc}}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@app.get("/design/history")
+def design_history():
+    """获取设计文档历史列表"""
+    designs = _load_designs()
+    return [
+        {"id": d["id"], "title": d["title"], "feishu_url": d.get("feishu_url", ""), "created_at": d["created_at"]}
+        for d in designs
+    ]
+
+
+@app.get("/design/history/{design_id}")
+def design_get(design_id: str):
+    """获取单条设计文档"""
+    for d in _load_designs():
+        if d["id"] == design_id:
+            return d
+    raise HTTPException(404, "记录不存在")
+
+
+@app.delete("/design/history/{design_id}")
+def design_delete(design_id: str):
+    """删除设计文档"""
+    designs = [d for d in _load_designs() if d["id"] != design_id]
+    with open(DESIGNS_FILE, "w", encoding="utf-8") as f:
+        json.dump(designs, f, ensure_ascii=False, indent=2)
+    return {"ok": True}
 
 
 if __name__ == "__main__":

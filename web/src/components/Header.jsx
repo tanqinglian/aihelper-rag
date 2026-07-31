@@ -1,9 +1,10 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { MessageOutlined, SettingOutlined, DashboardOutlined, CodeOutlined } from '@ant-design/icons';
+import { MessageOutlined, SettingOutlined, DashboardOutlined, CodeOutlined, FileTextOutlined } from '@ant-design/icons';
 
 const menuItems = [
   { key: '/chat', icon: <MessageOutlined />, label: 'Chat' },
+  { key: '/design', icon: <FileTextOutlined />, label: '详细设计' },
   { key: '/training', icon: <SettingOutlined />, label: '训练' },
   { key: '/monitoring', icon: <DashboardOutlined />, label: '监控' },
 ];

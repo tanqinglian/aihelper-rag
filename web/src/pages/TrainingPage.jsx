@@ -1,10 +1,32 @@
 import { useState } from 'react';
-import { Card, Button, Progress, Modal, Form, Input, Space, Tag, Typography, Collapse, Popconfirm, message } from 'antd';
-import { PlusOutlined, SyncOutlined, DeleteOutlined, FolderOpenOutlined, SettingOutlined } from '@ant-design/icons';
+import { Card, Button, Progress, Modal, Form, Input, Space, Tag, Typography, Collapse, Popconfirm, message, Radio, Alert } from 'antd';
+import { PlusOutlined, SyncOutlined, DeleteOutlined, FolderOpenOutlined, SettingOutlined, CodeOutlined } from '@ant-design/icons';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { projectApi, indexApi } from '../api/client';
 
 const { Text, Title } = Typography;
+
+// 项目类型预设配置
+const PROJECT_PRESETS = {
+  frontend: {
+    label: '前端项目',
+    icon: <CodeOutlined />,
+    description: 'React/Vue/Angular 等前端项目',
+    extensions: '.js, .jsx, .ts, .tsx, .less, .css, .vue, .scss',
+    ignoreDirs: 'node_modules, .umi, .git, dist, build, __pycache__, .next, .nuxt',
+    maxChars: '6000',
+  },
+  java: {
+    label: 'Java 后端',
+    icon: <span style={{ fontWeight: 'bold', fontSize: 12 }}>J</span>,
+    description: 'Spring Boot/MyBatis 等 Java 项目',
+    extensions: '.java, .xml',
+    ignoreDirs: 'target, .git, .idea, .mvn, logs, auto, build, out, bin, node_modules, .settings, .classpath, .project',
+    ignoreFiles: '*.class, *.jar, *.war, *.properties, *.yml, *.yaml, pom.xml, *.log, *.md, *.txt, *.png, *.jpg, *.gif, *.svg, *.ico, *.woff, *.woff2, *.ttf, *.eot',
+    maxChars: '8000',
+    tips: '建议将 source_dir 指向 src/main/java 目录，或项目根目录',
+  },
+};
 
 const statusMap = {
   idle: { color: 'default', text: '未索引' },
@@ -194,6 +216,18 @@ function ProjectCard({ project, isIndexing, progress, onIndex, onDelete }) {
 function AddProjectModal({ open, onClose, onCreated }) {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [projectType, setProjectType] = useState('frontend');
+
+  const handleTypeChange = (e) => {
+    const type = e.target.value;
+    setProjectType(type);
+    const preset = PROJECT_PRESETS[type];
+    form.setFieldsValue({
+      extensions: preset.extensions,
+      ignoreDirs: preset.ignoreDirs,
+      maxChars: preset.maxChars,
+    });
+  };
 
   const handleSubmit = async () => {
     try {
@@ -206,6 +240,7 @@ function AddProjectModal({ open, onClose, onCreated }) {
       };
       const project = await projectApi.create({ name: values.name, source_dir: values.sourceDir, config });
       form.resetFields();
+      setProjectType('frontend');
       onCreated(project);
     } catch (err) {
       if (err.message) message.error(err.message);
@@ -214,21 +249,58 @@ function AddProjectModal({ open, onClose, onCreated }) {
     }
   };
 
+  const currentPreset = PROJECT_PRESETS[projectType];
+
   return (
     <Modal title="添加新项目" open={open} onCancel={onClose} onOk={handleSubmit}
-      confirmLoading={loading} okText="创建并开始索引" cancelText="取消" destroyOnClose>
+      confirmLoading={loading} okText="创建并开始索引" cancelText="取消" destroyOnClose width={520}>
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}
         initialValues={{
-          extensions: '.js, .jsx, .ts, .tsx, .less, .css, .vue',
-          ignoreDirs: 'node_modules, .umi, .git, dist, __pycache__',
-          maxChars: '6000',
+          extensions: PROJECT_PRESETS.frontend.extensions,
+          ignoreDirs: PROJECT_PRESETS.frontend.ignoreDirs,
+          maxChars: PROJECT_PRESETS.frontend.maxChars,
         }}>
+
+        {/* 项目类型选择 */}
+        <Form.Item label="项目类型">
+          <Radio.Group value={projectType} onChange={handleTypeChange} buttonStyle="solid">
+            {Object.entries(PROJECT_PRESETS).map(([key, preset]) => (
+              <Radio.Button key={key} value={key} style={{ height: 'auto', padding: '8px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    width: 24, height: 24, borderRadius: 4,
+                    background: projectType === key ? '#52c41a' : '#f0f0f0',
+                    color: projectType === key ? '#fff' : '#666',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {preset.icon}
+                  </span>
+                  <div>
+                    <div style={{ fontWeight: 500, lineHeight: 1.2 }}>{preset.label}</div>
+                    <div style={{ fontSize: 11, color: '#999', fontWeight: 'normal' }}>{preset.description}</div>
+                  </div>
+                </div>
+              </Radio.Button>
+            ))}
+          </Radio.Group>
+        </Form.Item>
+
+        {/* Java 项目提示 */}
+        {projectType === 'java' && currentPreset.tips && (
+          <Alert
+            message={currentPreset.tips}
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
         <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
           <Input placeholder="my-awesome-project" />
         </Form.Item>
         <Form.Item name="sourceDir" label="源码目录" rules={[{ required: true, message: '请输入源码目录' }]}
-          extra="请输入绝对路径">
-          <Input placeholder="/Users/yourname/project/src" />
+          extra={projectType === 'java' ? '如: /Users/xxx/project/src/main/java' : '请输入绝对路径'}>
+          <Input placeholder={projectType === 'java' ? '/Users/yourname/project/src/main/java' : '/Users/yourname/project/src'} />
         </Form.Item>
         <Collapse ghost items={[{
           key: '1',
@@ -236,7 +308,7 @@ function AddProjectModal({ open, onClose, onCreated }) {
           children: (
             <>
               <Form.Item name="extensions" label="文件类型 (逗号分隔)"><Input /></Form.Item>
-              <Form.Item name="ignoreDirs" label="忽略目录 (逗号分隔)"><Input /></Form.Item>
+              <Form.Item name="ignoreDirs" label="忽略目录 (逗号分隔)"><Input.TextArea rows={2} /></Form.Item>
               <Form.Item name="maxChars" label="单文件上限 (字符)"><Input type="number" /></Form.Item>
             </>
           ),

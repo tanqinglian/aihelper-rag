@@ -6,6 +6,7 @@ import App from './App';
 import ChatPage from './pages/ChatPage';
 import TrainingPage from './pages/TrainingPage';
 import MonitoringPage from './pages/MonitoringPage';
+import DesignPage from './pages/DesignPage';
 
 const router = createBrowserRouter([
   {
@@ -19,6 +20,10 @@ const router = createBrowserRouter([
       {
         path: 'chat',
         element: <ChatPage />,
+      },
+      {
+        path: 'design',
+        element: <DesignPage />,
       },
       {
         path: 'training',

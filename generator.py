@@ -1,7 +1,7 @@
 """LLM 生成模块"""
 import json
 import httpx
-from config import OLLAMA_BASE_URL, LLM_MODEL
+from config import OLLAMA_BASE_URL, LLM_MODEL, LLM_PROVIDER, ZHIPU_API_KEY, ZHIPU_BASE_URL, ZHIPU_LLM_MODEL
 
 SYSTEM_PROMPT = """你是一个代码知识库助手，负责回答代码相关问题。
 
@@ -42,32 +42,81 @@ def _build_messages(question: str, docs: list[dict]):
 def generate_with_docs(question: str, docs: list[dict]) -> str:
     """非流式生成回答"""
     messages = _build_messages(question, docs)
+    if LLM_PROVIDER == "zhipu":
+        return _zhipu_call(messages)
+    return _ollama_call(messages)
 
+
+def generate_stream_with_docs(question: str, docs: list[dict]):
+    """流式生成回答，yield每个chunk"""
+    messages = _build_messages(question, docs)
+    if LLM_PROVIDER == "zhipu":
+        yield from _zhipu_stream(messages)
+    else:
+        yield from _ollama_stream(messages)
+
+
+def _zhipu_call(messages: list[dict]) -> str:
+    """调用智谱 GLM（非流式）"""
     resp = httpx.post(
-        f"{OLLAMA_BASE_URL}/api/chat",
+        f"{ZHIPU_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {ZHIPU_API_KEY}"},
         json={
-            "model": LLM_MODEL,
+            "model": ZHIPU_LLM_MODEL,
             "messages": messages,
             "stream": False,
         },
+        timeout=httpx.Timeout(timeout=120.0),
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def _zhipu_stream(messages: list[dict]):
+    """调用智谱 GLM（流式）"""
+    with httpx.stream(
+        "POST",
+        f"{ZHIPU_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {ZHIPU_API_KEY}"},
+        json={
+            "model": ZHIPU_LLM_MODEL,
+            "messages": messages,
+            "stream": True,
+        },
+        timeout=httpx.Timeout(timeout=120.0, read=120.0),
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if line.startswith("data: "):
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    data = json.loads(data_str)
+                    content = data["choices"][0]["delta"].get("content", "")
+                    if content:
+                        yield content
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
+
+def _ollama_call(messages: list[dict]) -> str:
+    """调用 Ollama LLM（非流式）"""
+    resp = httpx.post(
+        f"{OLLAMA_BASE_URL}/api/chat",
+        json={"model": LLM_MODEL, "messages": messages, "stream": False},
         timeout=httpx.Timeout(timeout=600.0, read=600.0),
     )
     resp.raise_for_status()
     return resp.json()["message"]["content"]
 
 
-def generate_stream_with_docs(question: str, docs: list[dict]):
-    """流式生成回答，yield每个chunk"""
-    messages = _build_messages(question, docs)
-
+def _ollama_stream(messages: list[dict]):
+    """调用 Ollama LLM（流式）"""
     with httpx.stream(
         "POST",
         f"{OLLAMA_BASE_URL}/api/chat",
-        json={
-            "model": LLM_MODEL,
-            "messages": messages,
-            "stream": True,
-        },
+        json={"model": LLM_MODEL, "messages": messages, "stream": True},
         timeout=httpx.Timeout(timeout=600.0, read=600.0),
     ) as response:
         response.raise_for_status()
